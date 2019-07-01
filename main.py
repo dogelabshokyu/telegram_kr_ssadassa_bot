@@ -4,27 +4,68 @@ import re
 import time
 import telegram
 import html
+import pymongo
 
-data = ""
-pre_data = ""
+#set url
+url = "http://cooln.net/rss?bo_table=jirum"
 
+#set telegram
 my_token = "Place Telegram bot token key"
-
 bot = telegram.Bot(token = my_token)
 channel = 'Your Channel ID'
 
+#set mongodb
+connection = pymongo.MongoClient('localhost', 27017)
+db = connection.cooln
+jirum = db.jirum
+
+def check_new_data():
+    xml_data = requests.get(url).text
+    parsing = BeautifulSoup(xml_data, "lxml-xml")
+    xml_link = parsing.find_all("link")
+    link_resub = re.findall("\d+", str(xml_link[1]))[0]
+    return link_resub
+
+def get_new_data(xml_data, n):
+    parsing = BeautifulSoup(xml_data, "lxml-xml")
+    xml_title = parsing.find_all("title")
+    xml_link = parsing.find_all("link")
+    title_resub = html.unescape(re.sub('<.+?>', '', str(xml_title[n])))
+    link_resub = re.findall("\d+", str(xml_link[n]))[0]
+    data = {"time" : int(time.time()),"title" : title_resub, "link" : link_resub, "deleted" : False}
+    return data
+
+def check_title(url):
+    r = jirum.find({"link" : url})
+    return r
+
+def compre(old, new):
+    if old == new:
+        return False
+    elif old > new:
+        return False
+    elif old < new:
+        return True
+    elif None:
+        return True
+    else:
+        return None
+
+
+print(db)
+print(jirum)
+xml_data = requests.get(url).text
+for i in range(1, 26):
+    jirum.insert_one(get_new_data(xml_data, i))
+
 while True:
-    xml_data = requests.get("http://cooln.net/rss?bo_table=jirum").text #xml 파일 받아옴
-    parsing = BeautifulSoup(xml_data, "lxml-xml") #정렬
-    xml_title = parsing.find_all("title") #title 찾기
-    xml_link = parsing.find_all("link") #link 찾기
-    title_resub = re.sub('<.+?>', '', str(xml_title[1]))  # 타이틀에서 html 태그 제거 (=제목 추출)
-    link_resub = re.findall("\d+", str(xml_link[1]))[0]  # 링크에서 숫자만 뽑기(=글번호 추출)
-    data = link_resub #글번호를 data에 넣음, 안 이래도 될것 같은데 혹시나 싶어서 하였음
-    if data > pre_data: #당연히 if문, 이전데이터와 비교하여 다를경우 작동
-        tele_msg = title_resub+"\nhttp://cooln.net/bbs/jirum/"+link_resub #텔레로 보낼 메시지
-        unescaped_msg = html.unescape(tele_msg) #HTML Unescape
-        print(unescaped_msg) #미리보기
-        bot.sendMessage(chat_id=channel, text=unescaped_msg) #텔레로 메시지 보냄
-    pre_data = data #이전데이터내용에 현 데이터를 넣음, while문이 1회 작동되면 1회차 데이터가 저장되며 2회차 작동때 데이터 비교가 가능
-    time.sleep(10) #10초 대기
+    oldnnew = compre(jirum.find_one()['link'], check_new_data())
+    if oldnnew == True:
+        jirum.insert_one(get_new_data(xml_data, 1))
+        for i in check_title(check_new_data()):
+            title = i['title']
+        link = jirum.find_one()['link']
+        msg = title+"\nhttp://cooln.net/bbs/jirum/"+link
+        unescaped_msg = html.unescape(msg)
+        bot.sendMessage(chat_id=channel, text=unescaped_msg)
+        print(unescaped_msg)
